@@ -59,8 +59,8 @@ master(main) → develop → feature
 - `[지라 티켓 번호] 자유롭게 작업한 내용 작성`
 
 ```
-[PICK-12] 로그인 화면 UI 구현
-[PICK-35] 네트워크 에러 핸들링 추가
+[PV-12] 로그인 화면 UI 구현
+[PV-35] 네트워크 에러 핸들링 추가
 ```
 
 #### Code Review
