@@ -14,4 +14,7 @@ yarn-error.log*
 
 .vercel
 *.tsbuildinfo
+
+# 개인 로컬 설정 (팀 공유는 .claude/settings.json)
+.claude/settings.local.json
 next-env.d.ts.bak
