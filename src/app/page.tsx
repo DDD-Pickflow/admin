@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Alert,
+  Button,
   Center,
   Group,
   Loader,
@@ -31,7 +32,7 @@ const STATUS_FILTERS = [
 
 export default function SpotListPage() {
   const router = useRouter();
-  const { data, isLoading, isError, error } = useSpots();
+  const { data, isLoading, isError, error, refetch } = useSpots();
 
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [query, setQuery] = useState("");
@@ -73,7 +74,12 @@ export default function SpotListPage() {
 
       {isError && (
         <Alert color="red" title="목록을 불러오지 못했습니다">
-          {(error as Error).message}
+          <Stack align="flex-start" gap="xs">
+            <Text size="sm">{(error as Error).message}</Text>
+            <Button size="xs" variant="light" color="red" onClick={() => refetch()}>
+              다시 시도
+            </Button>
+          </Stack>
         </Alert>
       )}
 

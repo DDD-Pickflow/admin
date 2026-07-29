@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Group, Modal, Radio, Stack, Text, Textarea } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
+import { AlreadyHandledError } from "@/lib/api";
 import { useApproveSpot, useRejectSpot } from "@/lib/queries";
 import { REJECT_REASONS, RejectReason, Spot, isPending } from "@/types/spot";
 
@@ -29,10 +30,24 @@ export function SpotActions({ spot }: { spot: Spot }) {
   }
 
   function fail(error: Error) {
+    // 다른 담당자가 먼저 처리한 경우 — 안내하고 최신 목록으로 돌려보낸다 (기획서 7.2)
+    if (error instanceof AlreadyHandledError) {
+      approveModal.close();
+      closeRejectModal();
+      notifications.show({
+        color: "yellow",
+        title: "이미 처리된 건입니다",
+        message: "다른 담당자가 먼저 처리했습니다. 목록을 새로고침합니다.",
+      });
+      router.push("/");
+      return;
+    }
+
+    // 네트워크 실패 — 모달을 열어둔 채로 두어 그대로 재시도할 수 있게 한다
     notifications.show({
       color: "red",
       title: "처리에 실패했습니다",
-      message: error.message,
+      message: `${error.message} 잠시 후 다시 시도해주세요.`,
     });
   }
 

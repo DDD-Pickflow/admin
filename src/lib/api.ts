@@ -12,6 +12,14 @@ const USE_MOCK = true;
 /** 처리자 이름 — Phase 6(로그인) 붙이면 로그인 사용자로 교체된다 */
 const CURRENT_HANDLER = "관리자";
 
+/**
+ * Phase 7 QA용 스위치. 목 데이터만으로는 실패 케이스를 만들 수 없어서 둔다.
+ *  - "network"  : 네트워크 실패 (실패 토스트 + 상태 원복 확인용)
+ *  - "conflict" : 다른 담당자가 먼저 처리 (409 안내 + 목록 새로고침 확인용)
+ * Phase 5에서 실제 API를 붙일 때 이 스위치는 제거한다.
+ */
+const MOCK_FAILURE: "none" | "network" | "conflict" = "none";
+
 /** 목 데이터는 승인/반려로 바뀌므로 원본 배열을 그대로 쓰지 않고 사본을 보관한다 */
 let mockStore: Spot[] = MOCK_SPOTS;
 
@@ -31,6 +39,7 @@ export async function fetchSpot(id: string): Promise<Spot> {
 
 export async function approveSpot(id: string): Promise<void> {
   if (USE_MOCK) {
+    await simulateFailure();
     updateMockSpot(id, (spot) => ({
       ...spot,
       status: SpotStatus.APPROVED,
@@ -47,6 +56,7 @@ export async function rejectSpot(
   payload: { reason: RejectReason; detail?: string }
 ): Promise<void> {
   if (USE_MOCK) {
+    await simulateFailure();
     const now = new Date().toISOString();
     updateMockSpot(id, (spot) => ({
       ...spot,
@@ -75,6 +85,14 @@ export class AlreadyHandledError extends Error {
     super("이미 처리된 건입니다.");
     this.name = "AlreadyHandledError";
   }
+}
+
+/** MOCK_FAILURE 설정에 따라 실패를 재현한다 (Phase 7 QA 전용) */
+async function simulateFailure(): Promise<void> {
+  if (MOCK_FAILURE === "none") return;
+  await delay(undefined);
+  if (MOCK_FAILURE === "conflict") throw new AlreadyHandledError();
+  throw new Error("네트워크에 연결할 수 없습니다.");
 }
 
 /** 목 데이터 한 건을 새 객체로 교체한다 (참조가 바뀌어야 목록이 다시 그려진다) */
