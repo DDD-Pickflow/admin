@@ -16,6 +16,7 @@ import {
   Title,
 } from "@mantine/core";
 import { IconAlertTriangle, IconArrowLeft } from "@tabler/icons-react";
+import { SpotActions } from "@/components/SpotActions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useSpot } from "@/lib/queries";
 import { formatDateTime } from "@/lib/format";
@@ -59,9 +60,12 @@ function SpotDetailBody({ spot }: { spot: Spot }) {
 
   return (
     <>
-      <Group gap="sm">
-        <Title order={3}>{spot.name}</Title>
-        <StatusBadge status={spot.status} />
+      <Group justify="space-between" align="center" wrap="wrap">
+        <Group gap="sm">
+          <Title order={3}>{spot.name}</Title>
+          <StatusBadge status={spot.status} />
+        </Group>
+        <SpotActions spot={spot} />
       </Group>
 
       {lastRejection && (

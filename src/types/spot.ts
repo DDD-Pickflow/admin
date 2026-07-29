@@ -29,6 +29,9 @@ export const RejectReason = {
 
 export type RejectReason = (typeof RejectReason)[keyof typeof RejectReason];
 
+/** 반려 모달의 선택지 순서 */
+export const REJECT_REASONS: RejectReason[] = Object.values(RejectReason);
+
 /** 반려 이력 — 재검토 건 상단에 이전 반려 사유/시점을 보여줄 때 사용 (기획서 4.2) */
 export interface RejectionRecord {
   reason: RejectReason;
