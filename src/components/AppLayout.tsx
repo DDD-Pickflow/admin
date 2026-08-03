@@ -1,10 +1,21 @@
 "use client";
 
-import { AppShell, Burger, Button, Group, NavLink, Text } from "@mantine/core";
+import {
+  AppShell,
+  Badge,
+  Box,
+  Burger,
+  Button,
+  Group,
+  NavLink,
+  Text,
+} from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
+import { BRAND_ORANGE, Logo } from "@/components/Logo";
+import { DEMO_MODE } from "@/lib/auth";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [opened, { toggle }] = useDisclosure();
@@ -36,18 +47,32 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {showNav && (
               <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
             )}
-            <Text fw={700}>스팟 검수 어드민</Text>
+            <Group gap={8}>
+              <Box c={BRAND_ORANGE}>
+                <Logo size={22} />
+              </Box>
+              <Text fw={700}>스팟 검수 어드민</Text>
+            </Group>
           </Group>
           {showNav && (
             <Group gap="xs">
-              {profile && (
-                <Text size="sm" c="dimmed">
-                  {profile.nickname}
-                </Text>
+              {DEMO_MODE ? (
+                // 실데이터가 아님을 분명히 알린다
+                <Badge color="gray" variant="light">
+                  데모 · 목 데이터
+                </Badge>
+              ) : (
+                <>
+                  {profile && (
+                    <Text size="sm" c="dimmed">
+                      {profile.nickname}
+                    </Text>
+                  )}
+                  <Button variant="subtle" size="xs" onClick={handleLogout}>
+                    로그아웃
+                  </Button>
+                </>
               )}
-              <Button variant="subtle" size="xs" onClick={handleLogout}>
-                로그아웃
-              </Button>
             </Group>
           )}
         </Group>

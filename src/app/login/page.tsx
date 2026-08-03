@@ -12,6 +12,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useAuth } from "@/components/AuthProvider";
+import { LogoTile } from "@/components/Logo";
 import { isMockAuth, startKakaoLogin } from "@/lib/auth";
 
 export default function LoginPage() {
@@ -21,7 +22,7 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 이미 로그인돼 있으면 목록으로 보낸다
+  // 이미 로그인돼 있으면 목록으로 보낸다 (데모 모드도 항상 여기 해당)
   useEffect(() => {
     if (isAuthenticated) router.replace("/");
   }, [isAuthenticated, router]);
@@ -47,11 +48,14 @@ export default function LoginPage() {
     <Center mih="70vh">
       <Card withBorder padding="xl" w={360}>
         <Stack>
-          <Stack gap={4}>
-            <Title order={4}>스팟 검수 어드민</Title>
-            <Text size="sm" c="dimmed">
-              검수 권한이 있는 계정만 이용할 수 있습니다.
-            </Text>
+          <Stack gap="sm" align="center" mb="xs">
+            <LogoTile size={56} />
+            <Stack gap={4} align="center">
+              <Title order={4}>스팟 검수 어드민</Title>
+              <Text size="sm" c="dimmed" ta="center">
+                검수 권한이 있는 계정만 이용할 수 있습니다.
+              </Text>
+            </Stack>
           </Stack>
 
           {error && (

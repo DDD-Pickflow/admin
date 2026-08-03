@@ -16,6 +16,23 @@ const PROFILE_KEY = "pickflow.admin.profile";
 /** 카카오 앱 키가 준비되기 전까지 로그인 흐름을 화면으로 확인하기 위한 스위치 */
 const USE_MOCK_AUTH = false;
 
+/**
+ * 데모 배포용. 로그인을 건너뛰고 검수 화면을 바로 보여준다.
+ *
+ * 팀에 화면을 공유하기 위한 모드이므로 목 데이터(api.ts의 USE_MOCK)와 함께 써야 한다.
+ * 실제 API를 붙이는 시점에 이 환경변수를 반드시 제거할 것 — 켜둔 채로 실데이터를
+ * 연결하면 URL을 아는 누구나 검수 화면에 들어온다.
+ */
+export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
+const DEMO_PROFILE: AdminProfile = {
+  userId: "demo",
+  email: null,
+  nickname: "데모",
+  profileImageUrl: null,
+  provider: "KAKAO",
+};
+
 const KAKAO_AUTHORIZE_URL = "https://kauth.kakao.com/oauth/authorize";
 
 const API_BASE_URL =
@@ -75,6 +92,8 @@ export function getRefreshToken(): string | null {
 
 /** 화면이 로그인 상태를 판단할 때 쓴다 — refresh로 살릴 수 있으면 아직 로그인 상태다 */
 export function hasSession(): boolean {
+  if (DEMO_MODE) return true;
+
   const token = getAccessToken();
   if (!token) return false;
   if (!isExpired(token)) return true;
@@ -83,6 +102,7 @@ export function hasSession(): boolean {
 }
 
 export function getProfile(): AdminProfile | null {
+  if (DEMO_MODE) return DEMO_PROFILE;
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(PROFILE_KEY);
   if (!raw) return null;
