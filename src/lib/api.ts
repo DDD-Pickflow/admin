@@ -4,6 +4,7 @@ import {
   notifyUnauthorized,
   refreshAccessToken,
 } from "@/lib/auth";
+import { USE_MOCK_DATA } from "@/lib/config";
 import {
   RejectReason,
   SpotDetail,
@@ -24,7 +25,7 @@ import {
  * 그대로 흉내내므로 화면 코드는 손대지 않아도 된다.
  */
 
-const USE_MOCK = true;
+const USE_MOCK = USE_MOCK_DATA;
 // iOS 앱이 호출하는 실제 주소 기준. openapi.json의 servers에는 /api가 빠져 있다.
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://pickflow-api.us/api";

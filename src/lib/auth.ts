@@ -9,21 +9,16 @@
  * 쿠키를 내려주는 구조가 아니고(Bearer 토큰 방식), 사내 검수용 도구라 이 정도로 둔다.
  */
 
+import { DEMO_MODE } from "@/lib/config";
+
+export { DEMO_MODE };
+
 const TOKEN_KEY = "pickflow.admin.accessToken";
 const REFRESH_TOKEN_KEY = "pickflow.admin.refreshToken";
 const PROFILE_KEY = "pickflow.admin.profile";
 
 /** 카카오 앱 키가 준비되기 전까지 로그인 흐름을 화면으로 확인하기 위한 스위치 */
 const USE_MOCK_AUTH = false;
-
-/**
- * 데모 배포용. 로그인을 건너뛰고 검수 화면을 바로 보여준다.
- *
- * 팀에 화면을 공유하기 위한 모드이므로 목 데이터(api.ts의 USE_MOCK)와 함께 써야 한다.
- * 실제 API를 붙이는 시점에 이 환경변수를 반드시 제거할 것 — 켜둔 채로 실데이터를
- * 연결하면 URL을 아는 누구나 검수 화면에 들어온다.
- */
-export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 const DEMO_PROFILE: AdminProfile = {
   userId: "demo",
