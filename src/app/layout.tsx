@@ -7,6 +7,7 @@ import "@mantine/dates/styles.css";
 
 import { Providers } from "./providers";
 import { AppLayout } from "@/components/AppLayout";
+import { AuthGuard } from "@/components/AuthGuard";
 
 export const metadata: Metadata = {
   title: "스팟 검수 어드민",
@@ -23,7 +24,9 @@ export default function RootLayout({
       </head>
       <body>
         <Providers>
-          <AppLayout>{children}</AppLayout>
+          <AppLayout>
+            <AuthGuard>{children}</AuthGuard>
+          </AppLayout>
         </Providers>
       </body>
     </html>

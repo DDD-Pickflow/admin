@@ -1,5 +1,10 @@
 import { MOCK_SPOTS, MockSpot, REASON_LABEL } from "@/mocks/spots";
 import {
+  getAccessToken,
+  notifyUnauthorized,
+  refreshAccessToken,
+} from "@/lib/auth";
+import {
   RejectReason,
   SpotDetail,
   SpotListItem,
@@ -20,8 +25,9 @@ import {
  */
 
 const USE_MOCK = true;
+// iOS 앱이 호출하는 실제 주소 기준. openapi.json의 servers에는 /api가 빠져 있다.
 const BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://pickflow-api.us";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://pickflow-api.us/api";
 
 /**
  * QA용 스위치. 목 데이터만으로는 실패 케이스를 만들 수 없어서 둔다.
@@ -110,7 +116,15 @@ export class AlreadyHandledError extends ApiError {
 
 // ─── 실제 HTTP ───────────────────────────────────────────────
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * 401을 받으면 토큰을 한 번 재발급하고 같은 요청을 다시 보낸다.
+ * 재발급까지 실패하면 화면에 알려 로그인으로 돌려보낸다.
+ */
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  allowRetry = true
+): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
     ...init,
     headers: {
@@ -124,30 +138,58 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     .json()
     .catch(() => null);
 
+  if (response.status === 401 && allowRetry) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) return request<T>(path, init, false);
+  }
+
+  // 서버는 실패를 HTTP 200 + success:false 로도 내려준다
   if (!response.ok || body?.success === false) {
     throw toApiError(response.status, body);
   }
   return body!.data;
 }
 
-/**
- * 서버는 Bearer JWT + USER_ADMIN 권한을 요구한다.
- * TODO(Phase 6): 로그인 붙이면 저장된 액세스 토큰을 여기서 꺼낸다.
- * openapi.json에 로그인 엔드포인트가 없어 토큰 발급 경로는 아직 미정이다.
- */
+/** 서버는 Bearer JWT + USER_ADMIN 권한을 요구한다 */
 function authHeader(): Record<string, string> {
-  const token: string | null = null;
+  const token = getAccessToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function toApiError(status: number, body: ApiResponse<unknown> | null): ApiError {
   const code = body?.code;
   if (status === 409 && code === "SP004") return new AlreadyHandledError();
-  return new ApiError(
-    body?.message ?? `요청에 실패했습니다 (${status})`,
-    status,
-    code
-  );
+
+  switch (status) {
+    case 401:
+      // 재발급까지 실패한 경우 — 화면이 로그인으로 돌려보내도록 알린다
+      notifyUnauthorized();
+      return new ApiError(
+        "로그인이 만료되었습니다. 다시 로그인해주세요.",
+        401,
+        code
+      );
+    case 403:
+      return new ApiError("검수 권한이 없는 계정입니다.", 403, code);
+    case 422:
+      return new ApiError(
+        body?.message ?? "요청 값이 올바르지 않습니다.",
+        422,
+        code
+      );
+    case 502:
+      return new ApiError(
+        "외부 연동에 실패했습니다. 잠시 후 다시 시도해주세요.",
+        502,
+        code
+      );
+    default:
+      return new ApiError(
+        body?.message ?? `요청에 실패했습니다 (${status})`,
+        status,
+        code
+      );
+  }
 }
 
 // ─── 목 구현 (서버 동작 재현) ─────────────────────────────────

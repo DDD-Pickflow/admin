@@ -1,0 +1,322 @@
+/**
+ * 어드민 인증.
+ *
+ * 웹은 카카오 인가 코드(code)를 받고, 코드를 액세스 토큰으로 바꾸는 일은 서버 라우트가
+ * 처리한다(client secret이 필요해서 브라우저에서 못 한다). 백엔드 /v1/auth/kakao 는
+ * iOS 앱과 동일하게 { accessToken }을 받으므로 수정 없이 재사용한다.
+ *
+ * 서버 JWT는 localStorage에 보관한다. httpOnly 쿠키가 XSS에 더 안전하지만 백엔드가
+ * 쿠키를 내려주는 구조가 아니고(Bearer 토큰 방식), 사내 검수용 도구라 이 정도로 둔다.
+ */
+
+const TOKEN_KEY = "pickflow.admin.accessToken";
+const REFRESH_TOKEN_KEY = "pickflow.admin.refreshToken";
+const PROFILE_KEY = "pickflow.admin.profile";
+
+/** 카카오 앱 키가 준비되기 전까지 로그인 흐름을 화면으로 확인하기 위한 스위치 */
+const USE_MOCK_AUTH = false;
+
+/**
+ * 데모 배포용. 로그인을 건너뛰고 검수 화면을 바로 보여준다.
+ *
+ * 팀에 화면을 공유하기 위한 모드이므로 목 데이터(api.ts의 USE_MOCK)와 함께 써야 한다.
+ * 실제 API를 붙이는 시점에 이 환경변수를 반드시 제거할 것 — 켜둔 채로 실데이터를
+ * 연결하면 URL을 아는 누구나 검수 화면에 들어온다.
+ */
+export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
+const DEMO_PROFILE: AdminProfile = {
+  userId: "demo",
+  email: null,
+  nickname: "데모",
+  profileImageUrl: null,
+  provider: "KAKAO",
+};
+
+const KAKAO_AUTHORIZE_URL = "https://kauth.kakao.com/oauth/authorize";
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://pickflow-api.us/api";
+
+/** 검수 화면에 들어올 수 있는 역할 */
+const ADMIN_ROLE = "USER_ADMIN";
+
+export interface AdminProfile {
+  userId: string;
+  email: string | null;
+  nickname: string;
+  profileImageUrl: string | null;
+  provider: string;
+}
+
+/** 권한이 없는 계정으로 로그인했을 때 */
+export class NotAdminError extends Error {
+  constructor(role: string | null) {
+    super(
+      `검수 권한이 없는 계정입니다. 관리자에게 권한 요청이 필요합니다. (현재 권한: ${role ?? "알 수 없음"})`
+    );
+    this.name = "NotAdminError";
+  }
+}
+
+/** 카카오 인증 후 돌아올 주소 — 카카오 콘솔에 등록한 값과 정확히 같아야 한다 */
+export function kakaoRedirectUri(): string {
+  return `${window.location.origin}/auth/callback`;
+}
+
+/** api 계층이 401을 받았을 때 화면에 알리는 통로 */
+export const UNAUTHORIZED_EVENT = "pickflow:unauthorized";
+
+/** 토큰이 만료됐거나 무효할 때 호출한다 */
+export function notifyUnauthorized(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+}
+
+// ─── 토큰 보관 ───────────────────────────────────────────────
+
+/**
+ * 저장된 액세스 토큰. 만료돼도 지우지 않고 그대로 준다.
+ * 만료 처리는 refresh를 시도하는 api 계층이 판단한다.
+ */
+export function getAccessToken(): string | null {
+  // 서버 렌더링 중에는 localStorage가 없다
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
+export function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+/** 화면이 로그인 상태를 판단할 때 쓴다 — refresh로 살릴 수 있으면 아직 로그인 상태다 */
+export function hasSession(): boolean {
+  if (DEMO_MODE) return true;
+
+  const token = getAccessToken();
+  if (!token) return false;
+  if (!isExpired(token)) return true;
+  // 액세스 토큰이 만료됐어도 refresh가 있으면 이어갈 수 있다
+  return getRefreshToken() !== null;
+}
+
+export function getProfile(): AdminProfile | null {
+  if (DEMO_MODE) return DEMO_PROFILE;
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(PROFILE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AdminProfile;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(
+  accessToken: string,
+  refreshToken: string | null,
+  profile: AdminProfile | null
+): void {
+  window.localStorage.setItem(TOKEN_KEY, accessToken);
+  if (refreshToken) window.localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  if (profile) window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+}
+
+export function clearSession(): void {
+  window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+  window.localStorage.removeItem(PROFILE_KEY);
+}
+
+/**
+ * 서버의 refreshToken을 무효화하고 로컬 세션을 지운다.
+ * 서버 호출이 실패해도 로컬은 반드시 지운다 — 로그아웃을 눌렀는데 로그인 상태로
+ * 남아 있는 편이 더 나쁘다.
+ */
+export async function logout(): Promise<void> {
+  const accessToken = getAccessToken();
+  const refreshToken = getRefreshToken();
+  clearSession();
+
+  if (!accessToken || !refreshToken) return;
+  try {
+    await fetch(`${API_BASE_URL}/v1/auth/logout`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ refreshToken }),
+    });
+  } catch {
+    // 네트워크 실패 시 서버 토큰은 만료까지 남지만, 로컬은 이미 지웠다
+  }
+}
+
+// ─── JWT 확인 ────────────────────────────────────────────────
+
+interface JwtPayload {
+  sub?: string;
+  role?: string;
+  exp?: number;
+}
+
+/**
+ * 서명 검증 없이 페이로드만 읽는다.
+ * 화면을 미리 걸러주기 위한 용도이고, 실제 권한 판정은 서버가 한다.
+ */
+function decodeJwt(token: string): JwtPayload | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(
+      base64.length + ((4 - (base64.length % 4)) % 4),
+      "="
+    );
+    return JSON.parse(atob(padded)) as JwtPayload;
+  } catch {
+    return null;
+  }
+}
+
+export function getRole(token: string): string | null {
+  return decodeJwt(token)?.role ?? null;
+}
+
+export function isAdminToken(token: string): boolean {
+  return getRole(token) === ADMIN_ROLE;
+}
+
+function isExpired(token: string): boolean {
+  const exp = decodeJwt(token)?.exp;
+  if (!exp) return false;
+  return exp * 1000 <= Date.now();
+}
+
+// ─── 로그인 ──────────────────────────────────────────────────
+
+/**
+ * 카카오 로그인 화면으로 보낸다. 인증이 끝나면 /auth/callback 으로 코드가 돌아온다.
+ * 목 모드에서는 카카오를 거치지 않고 바로 세션을 만든다.
+ */
+export async function startKakaoLogin(): Promise<void> {
+  if (USE_MOCK_AUTH) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    saveSession(mockAdminToken(), null, {
+      userId: "0",
+      email: null,
+      nickname: "테스트 검수자",
+      profileImageUrl: null,
+      provider: "KAKAO",
+    });
+    return;
+  }
+
+  const restApiKey = process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY;
+  if (!restApiKey) {
+    throw new Error("카카오 REST API 키가 설정되지 않았습니다.");
+  }
+
+  const params = new URLSearchParams({
+    client_id: restApiKey,
+    redirect_uri: kakaoRedirectUri(),
+    response_type: "code",
+  });
+  window.location.href = `${KAKAO_AUTHORIZE_URL}?${params}`;
+}
+
+/** 목 모드 여부 — 로그인 화면이 이동 없이 진입시킬지 판단할 때 쓴다 */
+export function isMockAuth(): boolean {
+  return USE_MOCK_AUTH;
+}
+
+/** 콜백에서 받은 인가 코드를 서버 JWT로 교환하고 저장한다 */
+export async function completeKakaoLogin(code: string): Promise<void> {
+  const response = await fetch("/api/auth/kakao", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, redirectUri: kakaoRedirectUri() }),
+  });
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !body?.accessToken) {
+    throw new Error(body?.message ?? "로그인에 실패했습니다.");
+  }
+
+  // 서버도 막지만, 들어와서 403을 만나기 전에 여기서 걸러준다
+  if (!isAdminToken(body.accessToken)) {
+    throw new NotAdminError(getRole(body.accessToken));
+  }
+
+  saveSession(body.accessToken, body.refreshToken ?? null, body.profile ?? null);
+}
+
+// ─── 토큰 재발급 ─────────────────────────────────────────────
+
+/** 동시에 여러 요청이 401을 받아도 refresh는 한 번만 돌게 묶는다 */
+let refreshInFlight: Promise<boolean> | null = null;
+
+/**
+ * refreshToken으로 액세스 토큰을 재발급한다.
+ * 성공하면 true. 실패하면 세션을 지우고 false를 준다.
+ *
+ * refresh 요청 자체는 Authorization 헤더 없이 보낸다 — 만료된 토큰을 붙이면
+ * 401이 다시 나서 재귀에 빠진다.
+ */
+export function refreshAccessToken(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) {
+      clearSession();
+      return false;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+      const body = await response.json().catch(() => null);
+
+      // 서버는 실패를 HTTP 200 + success:false 로도 내려준다
+      if (!response.ok || body?.success === false || !body?.data?.accessToken) {
+        clearSession();
+        return false;
+      }
+
+      // refreshToken도 함께 갱신된다(rotate)
+      saveSession(
+        body.data.accessToken,
+        body.data.refreshToken ?? refreshToken,
+        body.data.profile ?? getProfile()
+      );
+      return true;
+    } catch {
+      // 네트워크 오류는 세션을 지우지 않는다 — 잠시 후 다시 시도할 수 있다
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+/** 목 모드용 토큰 — 역할·만료를 실제 토큰과 같은 형태로 넣는다 */
+function mockAdminToken(): string {
+  const header = btoa(JSON.stringify({ alg: "none" }));
+  const payload = btoa(
+    JSON.stringify({
+      sub: "0",
+      type: "ACCESS",
+      role: ADMIN_ROLE,
+      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
+    })
+  );
+  return `${header}.${payload}.mock`;
+}
