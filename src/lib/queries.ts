@@ -1,46 +1,46 @@
 import {
   QueryClient,
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import {
   AlreadyHandledError,
-  approveSpot,
+  ReviewRequest,
+  SpotListParams,
   fetchSpot,
   fetchSpots,
-  rejectSpot,
+  reviewSpot,
 } from "@/lib/api";
-import { RejectReason } from "@/types/spot";
 
 export const spotKeys = {
   all: ["spots"] as const,
-  detail: (id: string) => ["spots", id] as const,
+  list: (params: SpotListParams) => ["spots", "list", params] as const,
+  detail: (id: number) => ["spots", "detail", id] as const,
 };
 
-export function useSpots() {
-  return useQuery({ queryKey: spotKeys.all, queryFn: fetchSpots });
-}
-
-export function useSpot(id: string) {
-  return useQuery({ queryKey: spotKeys.detail(id), queryFn: () => fetchSpot(id) });
-}
-
-export function useApproveSpot(id: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => approveSpot(id),
-    // spotKeys.all이 접두사라 목록·상세가 함께 무효화된다
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: spotKeys.all }),
-    onError: (error) => refreshOnConflict(queryClient, error),
+export function useSpots(params: SpotListParams) {
+  return useQuery({
+    queryKey: spotKeys.list(params),
+    queryFn: () => fetchSpots(params),
+    // 페이지·검색어가 바뀌어도 이전 결과를 잠깐 유지해 표가 깜빡이지 않게 한다
+    placeholderData: keepPreviousData,
   });
 }
 
-export function useRejectSpot(id: string) {
+export function useSpot(id: number) {
+  return useQuery({
+    queryKey: spotKeys.detail(id),
+    queryFn: () => fetchSpot(id),
+  });
+}
+
+/** 승인/반려는 서버에서 단일 엔드포인트(POST .../reviews)로 통합돼 있다 */
+export function useReviewSpot(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { reason: RejectReason; detail?: string }) =>
-      rejectSpot(id, payload),
+    mutationFn: (body: ReviewRequest) => reviewSpot(id, body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: spotKeys.all }),
     onError: (error) => refreshOnConflict(queryClient, error),
   });

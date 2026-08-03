@@ -1,108 +1,278 @@
-import { MOCK_SPOTS } from "@/mocks/spots";
-import { RejectReason, Spot, SpotStatus, isPending } from "@/types/spot";
+import { MOCK_SPOTS, MockSpot, REASON_LABEL } from "@/mocks/spots";
+import {
+  RejectReason,
+  SpotDetail,
+  SpotListItem,
+  SpotListResponse,
+  SpotStatus,
+  isPending,
+} from "@/types/spot";
 
 /**
- * Phase 5에서 이 파일 내부만 실제 fetch로 교체한다.
- * 화면 코드는 이 함수 시그니처만 알면 되므로 갈아끼울 때 UI를 건드릴 일이 없다.
+ * 서버 규격: openapi.json ("스팟 오픈신청 / 어드민 검수 API" v1.0.0)
+ *   GET  /v1/admin/spots?status=&q=&page=&size=
+ *   GET  /v1/admin/spots/{spotId}
+ *   POST /v1/admin/spots/{spotId}/reviews
+ *
+ * 모든 응답은 ApiResponse<T> = { success, code, message, data } 로 감싸져 있다.
+ * USE_MOCK를 끄면 실제 API로 붙는다. 목 구현은 서버 동작(정렬·검색·필터·페이징)을
+ * 그대로 흉내내므로 화면 코드는 손대지 않아도 된다.
  */
 
 const USE_MOCK = true;
-// const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
-
-/** 처리자 이름 — Phase 6(로그인) 붙이면 로그인 사용자로 교체된다 */
-const CURRENT_HANDLER = "관리자";
+const BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://pickflow-api.us";
 
 /**
- * Phase 7 QA용 스위치. 목 데이터만으로는 실패 케이스를 만들 수 없어서 둔다.
- *  - "network"  : 네트워크 실패 (실패 토스트 + 상태 원복 확인용)
- *  - "conflict" : 다른 담당자가 먼저 처리 (409 안내 + 목록 새로고침 확인용)
- * Phase 5에서 실제 API를 붙일 때 이 스위치는 제거한다.
+ * QA용 스위치. 목 데이터만으로는 실패 케이스를 만들 수 없어서 둔다.
+ * 실제 API로 전환한 뒤에는 제거한다.
  */
 const MOCK_FAILURE: "none" | "network" | "conflict" = "none";
 
-/** 목 데이터는 승인/반려로 바뀌므로 원본 배열을 그대로 쓰지 않고 사본을 보관한다 */
-let mockStore: Spot[] = MOCK_SPOTS;
+export const DEFAULT_PAGE_SIZE = 20;
 
-export async function fetchSpots(): Promise<Spot[]> {
-  if (USE_MOCK) return delay(mockStore.map((s) => ({ ...s })));
-  throw new Error("Phase 5: GET /spots 연동 필요");
+export interface SpotListParams {
+  /** 없으면 전체 */
+  status?: SpotStatus;
+  q?: string;
+  /** 0-base */
+  page: number;
+  size: number;
 }
 
-export async function fetchSpot(id: string): Promise<Spot> {
-  if (USE_MOCK) {
-    const found = mockStore.find((s) => s.id === id);
-    if (!found) throw new Error(`스팟을 찾을 수 없습니다: ${id}`);
-    return delay({ ...found });
-  }
-  throw new Error("Phase 5: GET /spots/:id 연동 필요");
+export type ReviewRequest =
+  | { decision: "APPROVED" }
+  | { decision: "REJECTED"; reason: RejectReason; detail?: string };
+
+/** 서버 공통 응답 래퍼 */
+interface ApiResponse<T> {
+  success: boolean;
+  code: string;
+  message: string;
+  data: T;
 }
 
-export async function approveSpot(id: string): Promise<void> {
-  if (USE_MOCK) {
-    await simulateFailure();
-    updateMockSpot(id, (spot) => ({
-      ...spot,
-      status: SpotStatus.APPROVED,
-      handlerName: CURRENT_HANDLER,
-      handledAt: new Date().toISOString(),
-    }));
-    return delay(undefined);
-  }
-  throw new Error(`Phase 5: POST /spots/${id}/approve 연동 필요`);
+// ─── 공개 API ────────────────────────────────────────────────
+
+export async function fetchSpots(
+  params: SpotListParams
+): Promise<SpotListResponse> {
+  if (USE_MOCK) return mockFetchSpots(params);
+
+  const query = new URLSearchParams({
+    page: String(params.page),
+    size: String(params.size),
+  });
+  if (params.status) query.set("status", params.status);
+  if (params.q) query.set("q", params.q);
+
+  return request<SpotListResponse>(`/v1/admin/spots?${query}`);
 }
 
-export async function rejectSpot(
-  id: string,
-  payload: { reason: RejectReason; detail?: string }
+export async function fetchSpot(id: number): Promise<SpotDetail> {
+  if (USE_MOCK) return mockFetchSpot(id);
+  return request<SpotDetail>(`/v1/admin/spots/${id}`);
+}
+
+export async function reviewSpot(
+  id: number,
+  body: ReviewRequest
 ): Promise<void> {
-  if (USE_MOCK) {
-    await simulateFailure();
-    const now = new Date().toISOString();
-    updateMockSpot(id, (spot) => ({
-      ...spot,
-      status: SpotStatus.REJECTED,
-      handlerName: CURRENT_HANDLER,
-      handledAt: now,
-      // 최신순이므로 앞에 붙인다
-      rejectionHistory: [
-        {
-          reason: payload.reason,
-          detail: payload.detail,
-          handlerName: CURRENT_HANDLER,
-          rejectedAt: now,
-        },
-        ...spot.rejectionHistory,
-      ],
-    }));
-    return delay(undefined);
-  }
-  throw new Error(`Phase 5: POST /spots/${id}/reject 연동 필요`);
+  if (USE_MOCK) return mockReviewSpot(id, body);
+
+  await request<unknown>(`/v1/admin/spots/${id}/reviews`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
-/** 이미 처리된 건(409)을 화면에서 구분하기 위한 에러 타입 — 기획서 7.2 */
-export class AlreadyHandledError extends Error {
+// ─── 에러 ────────────────────────────────────────────────────
+
+/** 서버 공통 에러 응답을 감싼 타입 */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/** 이미 처리된 건 — 409 / code SP004 (SPOT_ALREADY_REVIEWED) */
+export class AlreadyHandledError extends ApiError {
   constructor() {
-    super("이미 처리된 건입니다.");
+    super("이미 처리된 건입니다.", 409, "SP004");
     this.name = "AlreadyHandledError";
   }
 }
 
-/** MOCK_FAILURE 설정에 따라 실패를 재현한다 (Phase 7 QA 전용) */
+// ─── 실제 HTTP ───────────────────────────────────────────────
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader(),
+      ...init?.headers,
+    },
+  });
+
+  const body: ApiResponse<T> | null = await response
+    .json()
+    .catch(() => null);
+
+  if (!response.ok || body?.success === false) {
+    throw toApiError(response.status, body);
+  }
+  return body!.data;
+}
+
+/**
+ * 서버는 Bearer JWT + USER_ADMIN 권한을 요구한다.
+ * TODO(Phase 6): 로그인 붙이면 저장된 액세스 토큰을 여기서 꺼낸다.
+ * openapi.json에 로그인 엔드포인트가 없어 토큰 발급 경로는 아직 미정이다.
+ */
+function authHeader(): Record<string, string> {
+  const token: string | null = null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function toApiError(status: number, body: ApiResponse<unknown> | null): ApiError {
+  const code = body?.code;
+  if (status === 409 && code === "SP004") return new AlreadyHandledError();
+  return new ApiError(
+    body?.message ?? `요청에 실패했습니다 (${status})`,
+    status,
+    code
+  );
+}
+
+// ─── 목 구현 (서버 동작 재현) ─────────────────────────────────
+
+let mockStore: MockSpot[] = MOCK_SPOTS;
+
+/** 목 레코드에서 목록 행에 해당하는 필드만 뽑는다 */
+function toListItem(spot: MockSpot): SpotListItem {
+  return {
+    id: spot.id,
+    appliedAt: spot.appliedAt,
+    userNickname: spot.userNickname,
+    name: spot.name,
+    status: spot.status,
+    handlerName: spot.handlerName,
+    handledAt: spot.handledAt,
+  };
+}
+
+async function mockFetchSpots(
+  params: SpotListParams
+): Promise<SpotListResponse> {
+  const q = params.q?.trim().toLowerCase() ?? "";
+  const filtered = mockStore
+    .filter((s) => s.status !== SpotStatus.DRAFT)
+    .filter((s) => !params.status || s.status === params.status)
+    .filter(
+      (s) =>
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        s.userNickname.toLowerCase().includes(q)
+    )
+    .map(toListItem)
+    .sort(compareByServerRule);
+
+  const start = params.page * params.size;
+  const items = filtered.slice(start, start + params.size);
+
+  return delay({
+    items,
+    page: params.page,
+    hasNext: start + params.size < filtered.length,
+  });
+}
+
+/** 재검토대기 → 검수중(오래된순) → 승인/반려(처리일시 최신순) */
+function compareByServerRule(a: SpotListItem, b: SpotListItem): number {
+  const rank = (s: SpotListItem) =>
+    s.status === SpotStatus.RE_REVIEW_PENDING ? 0 : isPending(s.status) ? 1 : 2;
+
+  const diff = rank(a) - rank(b);
+  if (diff !== 0) return diff;
+
+  // 오프셋 없는 동일 포맷이라 문자열 비교로 시간순이 나온다
+  if (isPending(a.status)) return a.appliedAt.localeCompare(b.appliedAt);
+  return (b.handledAt ?? "").localeCompare(a.handledAt ?? "");
+}
+
+async function mockFetchSpot(id: number): Promise<SpotDetail> {
+  const found = mockStore.find((s) => s.id === id);
+  if (!found) throw new ApiError(`스팟을 찾을 수 없습니다: ${id}`, 404);
+  return delay(toDetail(found));
+}
+
+/** 실제 상세 응답에는 처리자/처리일시가 없으므로 목에서도 빼고 내려준다 */
+function toDetail(spot: MockSpot): SpotDetail {
+  return {
+    id: spot.id,
+    name: spot.name,
+    userNickname: spot.userNickname,
+    status: spot.status,
+    appliedAt: spot.appliedAt,
+    photoUrls: spot.photoUrls,
+    address: spot.address,
+    latitude: spot.latitude,
+    longitude: spot.longitude,
+    comment: spot.comment,
+    shotAt: spot.shotAt,
+    theme: spot.theme,
+    themeLabel: spot.themeLabel,
+    rejectionHistory: spot.rejectionHistory,
+    userTrust: spot.userTrust,
+  };
+}
+
+async function mockReviewSpot(id: number, body: ReviewRequest): Promise<void> {
+  await simulateFailure();
+
+  const index = mockStore.findIndex((s) => s.id === id);
+  if (index < 0) throw new ApiError(`스팟을 찾을 수 없습니다: ${id}`, 404);
+  const current = mockStore[index];
+  if (!isPending(current.status)) throw new AlreadyHandledError();
+
+  const now = new Date().toISOString().slice(0, 19);
+  const reviewed: MockSpot = { ...current, handlerName: MOCK_HANDLER, handledAt: now };
+  const handled: MockSpot =
+    body.decision === "APPROVED"
+      ? { ...reviewed, status: SpotStatus.PUBLISHED }
+      : {
+          ...reviewed,
+          status: SpotStatus.REJECTED,
+          rejectionHistory: [
+            {
+              reason: body.reason,
+              reasonLabel: REASON_LABEL[body.reason],
+              detail: body.detail,
+              handlerName: MOCK_HANDLER,
+              rejectedAt: now,
+            },
+            ...current.rejectionHistory,
+          ],
+        };
+
+  mockStore = mockStore.map((s, i) => (i === index ? handled : s));
+  return delay(undefined);
+}
+
+/** 실제로는 서버가 JWT에서 식별한다. 목에서만 쓰는 값 */
+const MOCK_HANDLER = "관리자";
+
 async function simulateFailure(): Promise<void> {
   if (MOCK_FAILURE === "none") return;
   await delay(undefined);
   if (MOCK_FAILURE === "conflict") throw new AlreadyHandledError();
-  throw new Error("네트워크에 연결할 수 없습니다.");
-}
-
-/** 목 데이터 한 건을 새 객체로 교체한다 (참조가 바뀌어야 목록이 다시 그려진다) */
-function updateMockSpot(id: string, patch: (spot: Spot) => Spot): void {
-  const index = mockStore.findIndex((s) => s.id === id);
-  if (index < 0) throw new Error(`스팟을 찾을 수 없습니다: ${id}`);
-  // 서버가 409를 주는 상황을 목에서도 동일하게 재현 (화면 대응은 Phase 7)
-  if (!isPending(mockStore[index].status)) throw new AlreadyHandledError();
-
-  mockStore = mockStore.map((s, i) => (i === index ? patch(s) : s));
+  throw new ApiError("네트워크에 연결할 수 없습니다.", 0);
 }
 
 function delay<T>(value: T, ms = 300): Promise<T> {

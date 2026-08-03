@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Alert,
@@ -15,37 +15,42 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { useDebouncedValue } from "@mantine/hooks";
 import { IconSearch } from "@tabler/icons-react";
 import { StatusBadge } from "@/components/StatusBadge";
+import { DEFAULT_PAGE_SIZE } from "@/lib/api";
 import { useSpots } from "@/lib/queries";
-import { matchesQuery, sortSpots } from "@/lib/sort";
 import { formatDateTime } from "@/lib/format";
-import { SpotStatus } from "@/types/spot";
+import { ADMIN_STATUSES, SPOT_STATUS_LABEL, SpotStatus } from "@/types/spot";
+
+const ALL = "ALL";
 
 const STATUS_FILTERS = [
-  { label: "전체", value: "ALL" },
-  { label: SpotStatus.UNDER_REVIEW, value: SpotStatus.UNDER_REVIEW },
-  { label: SpotStatus.RE_REVIEW_PENDING, value: SpotStatus.RE_REVIEW_PENDING },
-  { label: SpotStatus.APPROVED, value: SpotStatus.APPROVED },
-  { label: SpotStatus.REJECTED, value: SpotStatus.REJECTED },
+  { label: "전체", value: ALL },
+  ...ADMIN_STATUSES.map((s) => ({ label: SPOT_STATUS_LABEL[s], value: s })),
 ];
 
 export default function SpotListPage() {
   const router = useRouter();
-  const { data, isLoading, isError, error, refetch } = useSpots();
 
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState<string>(ALL);
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
 
-  const rows = useMemo(() => {
-    if (!data) return [];
-    const filtered = data.filter(
-      (s) =>
-        (statusFilter === "ALL" || s.status === statusFilter) &&
-        matchesQuery(s, query)
-    );
-    return sortSpots(filtered);
-  }, [data, statusFilter, query]);
+  // 타이핑마다 요청이 나가지 않도록 한 박자 늦춘다 (검색은 서버가 처리)
+  const [debouncedQuery] = useDebouncedValue(query, 300);
+
+  // 조건이 바뀌면 첫 페이지로 되돌린다
+  useEffect(() => {
+    setPage(0);
+  }, [statusFilter, debouncedQuery]);
+
+  const { data, isLoading, isError, error, refetch, isFetching } = useSpots({
+    status: statusFilter === ALL ? undefined : (statusFilter as SpotStatus),
+    q: debouncedQuery.trim() || undefined,
+    page,
+    size: DEFAULT_PAGE_SIZE,
+  });
 
   return (
     <Stack>
@@ -86,8 +91,10 @@ export default function SpotListPage() {
       {data && (
         <>
           <Text size="sm" c="dimmed">
-            총 {rows.length}건
+            {page + 1}페이지 · {data.items.length}건
+            {isFetching && " · 불러오는 중"}
           </Text>
+
           <Table.ScrollContainer minWidth={720}>
             <Table highlightOnHover verticalSpacing="sm">
               <Table.Thead>
@@ -101,7 +108,7 @@ export default function SpotListPage() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {rows.map((spot) => (
+                {data.items.map((spot) => (
                   <Table.Tr
                     key={spot.id}
                     onClick={() => router.push(`/spots/${spot.id}`)}
@@ -117,7 +124,7 @@ export default function SpotListPage() {
                     <Table.Td>{formatDateTime(spot.handledAt)}</Table.Td>
                   </Table.Tr>
                 ))}
-                {rows.length === 0 && (
+                {data.items.length === 0 && (
                   <Table.Tr>
                     <Table.Td colSpan={6}>
                       <Text ta="center" c="dimmed" py="md">
@@ -129,6 +136,28 @@ export default function SpotListPage() {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
+
+          {/* 서버가 전체 페이지 수를 주지 않고 hasNext만 주므로 이전/다음만 제공한다 */}
+          {(page > 0 || data.hasNext) && (
+            <Group justify="center" gap="sm">
+              <Button
+                variant="default"
+                size="xs"
+                disabled={page === 0 || isFetching}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                이전
+              </Button>
+              <Button
+                variant="default"
+                size="xs"
+                disabled={!data.hasNext || isFetching}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                다음
+              </Button>
+            </Group>
+          )}
         </>
       )}
     </Stack>

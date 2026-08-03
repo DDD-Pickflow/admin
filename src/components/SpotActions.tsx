@@ -6,11 +6,17 @@ import { Button, Group, Modal, Radio, Stack, Text, Textarea } from "@mantine/cor
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { AlreadyHandledError } from "@/lib/api";
-import { useApproveSpot, useRejectSpot } from "@/lib/queries";
-import { REJECT_REASONS, RejectReason, Spot, isPending } from "@/types/spot";
+import { useReviewSpot } from "@/lib/queries";
+import {
+  REJECT_REASONS,
+  REJECT_REASON_LABEL,
+  RejectReason,
+  SpotDetail,
+  isPending,
+} from "@/types/spot";
 
 /** 승인/반려 처리 버튼 + 확인 모달 (기획서 5장) */
-export function SpotActions({ spot }: { spot: Spot }) {
+export function SpotActions({ spot }: { spot: SpotDetail }) {
   const router = useRouter();
   const [approveOpened, approveModal] = useDisclosure(false);
   const [rejectOpened, rejectModal] = useDisclosure(false);
@@ -18,8 +24,7 @@ export function SpotActions({ spot }: { spot: Spot }) {
   const [reason, setReason] = useState<RejectReason | null>(null);
   const [detail, setDetail] = useState("");
 
-  const approve = useApproveSpot(spot.id);
-  const reject = useRejectSpot(spot.id);
+  const review = useReviewSpot(spot.id);
 
   // 이미 처리된 건은 더 처리할 게 없다
   if (!isPending(spot.status)) return null;
@@ -58,19 +63,22 @@ export function SpotActions({ spot }: { spot: Spot }) {
   }
 
   function submitApprove() {
-    approve.mutate(undefined, {
-      onSuccess: () => {
-        approveModal.close();
-        finish(`'${spot.name}' 승인 처리했습니다.`);
-      },
-      onError: fail,
-    });
+    review.mutate(
+      { decision: "APPROVED" },
+      {
+        onSuccess: () => {
+          approveModal.close();
+          finish(`'${spot.name}' 승인 처리했습니다.`);
+        },
+        onError: fail,
+      }
+    );
   }
 
   function submitReject() {
     if (!reason) return;
-    reject.mutate(
-      { reason, detail: detail.trim() || undefined },
+    review.mutate(
+      { decision: "REJECTED", reason, detail: detail.trim() || undefined },
       {
         onSuccess: () => {
           closeRejectModal();
@@ -81,7 +89,7 @@ export function SpotActions({ spot }: { spot: Spot }) {
     );
   }
 
-  // "기타"는 추가 입력이 있어야 확정할 수 있다 (기획서 5장)
+  // ETC는 추가 입력이 있어야 확정할 수 있다 (서버도 미입력 시 400을 준다)
   const canSubmitReject =
     reason !== null && (reason !== RejectReason.ETC || detail.trim().length > 0);
 
@@ -103,16 +111,14 @@ export function SpotActions({ spot }: { spot: Spot }) {
         centered
       >
         <Stack>
-          <Text size="sm">
-            &apos;{spot.name}&apos; 스팟을 승인하시겠습니까?
-          </Text>
+          <Text size="sm">&apos;{spot.name}&apos; 스팟을 승인하시겠습니까?</Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={approveModal.close}>
               취소
             </Button>
             <Button
               color="green"
-              loading={approve.isPending}
+              loading={review.isPending}
               onClick={submitApprove}
             >
               승인 확정
@@ -136,7 +142,7 @@ export function SpotActions({ spot }: { spot: Spot }) {
           >
             <Stack gap="xs" mt="xs">
               {REJECT_REASONS.map((r) => (
-                <Radio key={r} value={r} label={r} />
+                <Radio key={r} value={r} label={REJECT_REASON_LABEL[r]} />
               ))}
             </Stack>
           </Radio.Group>
@@ -160,7 +166,7 @@ export function SpotActions({ spot }: { spot: Spot }) {
             <Button
               color="red"
               disabled={!canSubmitReject}
-              loading={reject.isPending}
+              loading={review.isPending}
               onClick={submitReject}
             >
               반려 확정
