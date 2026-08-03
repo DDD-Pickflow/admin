@@ -1,0 +1,76 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Alert,
+  Button,
+  Card,
+  Center,
+  Stack,
+  Text,
+  Title,
+} from "@mantine/core";
+import { useAuth } from "@/components/AuthProvider";
+import { isMockAuth, startKakaoLogin } from "@/lib/auth";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const { isAuthenticated, refresh } = useAuth();
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // 이미 로그인돼 있으면 목록으로 보낸다
+  useEffect(() => {
+    if (isAuthenticated) router.replace("/");
+  }, [isAuthenticated, router]);
+
+  async function handleLogin() {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await startKakaoLogin();
+      // 실제 로그인은 카카오로 이동했다가 /auth/callback 에서 마무리된다.
+      // 목 모드에서는 이동 없이 바로 토큰이 저장되므로 여기서 진입시킨다.
+      if (isMockAuth()) {
+        refresh();
+        router.replace("/");
+      }
+    } catch (e) {
+      setError((e as Error).message);
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <Center mih="70vh">
+      <Card withBorder padding="xl" w={360}>
+        <Stack>
+          <Stack gap={4}>
+            <Title order={4}>스팟 검수 어드민</Title>
+            <Text size="sm" c="dimmed">
+              검수 권한이 있는 계정만 이용할 수 있습니다.
+            </Text>
+          </Stack>
+
+          {error && (
+            <Alert color="red" title="로그인하지 못했습니다">
+              {error}
+            </Alert>
+          )}
+
+          <Button
+            fullWidth
+            color="yellow"
+            c="black"
+            loading={isSubmitting}
+            onClick={handleLogin}
+          >
+            카카오로 로그인
+          </Button>
+        </Stack>
+      </Card>
+    </Center>
+  );
+}
