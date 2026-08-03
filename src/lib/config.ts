@@ -12,9 +12,9 @@ export const USE_MOCK_DATA = true;
 /**
  * 로그인을 건너뛰고 검수 화면을 바로 보여준다 (팀 공유용 데모 배포).
  *
- * 목 데이터일 때만 유효하다. USE_MOCK_DATA를 false로 바꾸는 순간 자동으로 꺼지므로
- * 실데이터가 인증 없이 노출될 일은 없다.
- * 로그인을 정상 동작시켜 확인하려면 NEXT_PUBLIC_DEMO_MODE=false 로 끌 수 있다.
+ * 기본은 꺼짐. 켜려면 NEXT_PUBLIC_DEMO_MODE=true 를 환경변수로 준다.
+ * 목 데이터일 때만 유효하므로, USE_MOCK_DATA를 false로 바꾸면 환경변수가 켜져 있어도
+ * 자동으로 꺼진다 — 실데이터가 인증 없이 열리는 조합은 만들어지지 않는다.
  */
 export const DEMO_MODE =
-  USE_MOCK_DATA && process.env.NEXT_PUBLIC_DEMO_MODE !== "false";
+  USE_MOCK_DATA && process.env.NEXT_PUBLIC_DEMO_MODE === "true";
