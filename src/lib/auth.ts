@@ -18,6 +18,9 @@ const USE_MOCK_AUTH = false;
 
 const KAKAO_AUTHORIZE_URL = "https://kauth.kakao.com/oauth/authorize";
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://pickflow-api.us/api";
+
 /** 검수 화면에 들어올 수 있는 역할 */
 const ADMIN_ROLE = "USER_ADMIN";
 
@@ -55,19 +58,28 @@ export function notifyUnauthorized(): void {
 
 // ─── 토큰 보관 ───────────────────────────────────────────────
 
+/**
+ * 저장된 액세스 토큰. 만료돼도 지우지 않고 그대로 준다.
+ * 만료 처리는 refresh를 시도하는 api 계층이 판단한다.
+ */
 export function getAccessToken(): string | null {
   // 서버 렌더링 중에는 localStorage가 없다
   if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(TOKEN_KEY);
+}
 
-  const token = window.localStorage.getItem(TOKEN_KEY);
-  if (!token) return null;
+export function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(REFRESH_TOKEN_KEY);
+}
 
-  // 만료된 토큰은 보낼 필요가 없다 (유효기간 24시간)
-  if (isExpired(token)) {
-    clearSession();
-    return null;
-  }
-  return token;
+/** 화면이 로그인 상태를 판단할 때 쓴다 — refresh로 살릴 수 있으면 아직 로그인 상태다 */
+export function hasSession(): boolean {
+  const token = getAccessToken();
+  if (!token) return false;
+  if (!isExpired(token)) return true;
+  // 액세스 토큰이 만료됐어도 refresh가 있으면 이어갈 수 있다
+  return getRefreshToken() !== null;
 }
 
 export function getProfile(): AdminProfile | null {
@@ -97,8 +109,29 @@ export function clearSession(): void {
   window.localStorage.removeItem(PROFILE_KEY);
 }
 
-export function logout(): void {
+/**
+ * 서버의 refreshToken을 무효화하고 로컬 세션을 지운다.
+ * 서버 호출이 실패해도 로컬은 반드시 지운다 — 로그아웃을 눌렀는데 로그인 상태로
+ * 남아 있는 편이 더 나쁘다.
+ */
+export async function logout(): Promise<void> {
+  const accessToken = getAccessToken();
+  const refreshToken = getRefreshToken();
   clearSession();
+
+  if (!accessToken || !refreshToken) return;
+  try {
+    await fetch(`${API_BASE_URL}/v1/auth/logout`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ refreshToken }),
+    });
+  } catch {
+    // 네트워크 실패 시 서버 토큰은 만료까지 남지만, 로컬은 이미 지웠다
+  }
 }
 
 // ─── JWT 확인 ────────────────────────────────────────────────
@@ -198,6 +231,60 @@ export async function completeKakaoLogin(code: string): Promise<void> {
   }
 
   saveSession(body.accessToken, body.refreshToken ?? null, body.profile ?? null);
+}
+
+// ─── 토큰 재발급 ─────────────────────────────────────────────
+
+/** 동시에 여러 요청이 401을 받아도 refresh는 한 번만 돌게 묶는다 */
+let refreshInFlight: Promise<boolean> | null = null;
+
+/**
+ * refreshToken으로 액세스 토큰을 재발급한다.
+ * 성공하면 true. 실패하면 세션을 지우고 false를 준다.
+ *
+ * refresh 요청 자체는 Authorization 헤더 없이 보낸다 — 만료된 토큰을 붙이면
+ * 401이 다시 나서 재귀에 빠진다.
+ */
+export function refreshAccessToken(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) {
+      clearSession();
+      return false;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+      const body = await response.json().catch(() => null);
+
+      // 서버는 실패를 HTTP 200 + success:false 로도 내려준다
+      if (!response.ok || body?.success === false || !body?.data?.accessToken) {
+        clearSession();
+        return false;
+      }
+
+      // refreshToken도 함께 갱신된다(rotate)
+      saveSession(
+        body.data.accessToken,
+        body.data.refreshToken ?? refreshToken,
+        body.data.profile ?? getProfile()
+      );
+      return true;
+    } catch {
+      // 네트워크 오류는 세션을 지우지 않는다 — 잠시 후 다시 시도할 수 있다
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
 }
 
 /** 목 모드용 토큰 — 역할·만료를 실제 토큰과 같은 형태로 넣는다 */

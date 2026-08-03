@@ -12,8 +12,9 @@ import {
   AdminProfile,
   UNAUTHORIZED_EVENT,
   clearSession,
-  getAccessToken,
   getProfile,
+  hasSession,
+  logout as endSession,
 } from "@/lib/auth";
 
 interface AuthContextValue {
@@ -35,8 +36,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<AdminProfile | null>(null);
 
   const refresh = useCallback(() => {
-    // 만료된 토큰이면 getAccessToken이 세션을 비우고 null을 준다
-    setIsAuthenticated(getAccessToken() !== null);
+    // 액세스 토큰이 만료됐어도 refreshToken이 있으면 로그인 상태로 본다
+    setIsAuthenticated(hasSession());
     setProfile(getProfile());
   }, []);
 
@@ -66,7 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [queryClient]);
 
   const logout = useCallback(() => {
-    clearSession();
+    // 서버 호출을 기다리지 않고 화면은 즉시 로그아웃 상태로 만든다
+    void endSession();
     queryClient.clear();
     setIsAuthenticated(false);
     setProfile(null);

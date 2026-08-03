@@ -97,14 +97,27 @@ export async function POST(request: Request) {
   });
   const loginBody = await loginResponse.json().catch(() => null);
 
+  // 실패가 HTTP 200 + success:false 로 내려오는 경우가 있어 상태 코드만 보면 안 된다
   if (!loginResponse.ok || loginBody?.success === false) {
     console.error("[auth/kakao] 백엔드 로그인 실패", {
       status: loginResponse.status,
       body: loginBody,
     });
+
+    // 탈퇴 이력이 있는 계정. 복구는 앱에서 진행하는 흐름이라 어드민은 안내만 한다.
+    if (loginBody?.code === "U007") {
+      return NextResponse.json(
+        {
+          message:
+            "탈퇴 이력이 있는 계정입니다. 앱에서 재가입한 뒤 다시 로그인해주세요.",
+        },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json(
       { message: loginBody?.message ?? "로그인에 실패했습니다." },
-      { status: loginResponse.status }
+      { status: loginResponse.status === 200 ? 401 : loginResponse.status }
     );
   }
 
