@@ -12,6 +12,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useAuth } from "@/components/AuthProvider";
+import { KAKAO_LABEL, KAKAO_YELLOW, KakaoIcon } from "@/components/KakaoIcon";
 import { LogoTile } from "@/components/Logo";
 import { isMockAuth, startKakaoLogin } from "@/lib/auth";
 
@@ -64,14 +65,16 @@ export default function LoginPage() {
             </Alert>
           )}
 
+          {/* 색·문구는 카카오 로그인 버튼 규격을 따른다 */}
           <Button
             fullWidth
-            color="yellow"
-            c="black"
+            color={KAKAO_YELLOW}
+            c={KAKAO_LABEL}
+            leftSection={<KakaoIcon size={18} />}
             loading={isSubmitting}
             onClick={handleLogin}
           >
-            카카오로 로그인
+            카카오 로그인
           </Button>
         </Stack>
       </Card>
