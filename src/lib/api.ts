@@ -126,14 +126,24 @@ async function request<T>(
   init?: RequestInit,
   allowRetry = true
 ): Promise<T> {
-  const response = await fetch(`${BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeader(),
-      ...init?.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeader(),
+        ...init?.headers,
+      },
+    });
+  } catch {
+    // CORS 차단과 네트워크 단절이 브라우저에서는 똑같이 TypeError로 온다.
+    // 둘을 구분할 방법이 없어 양쪽을 함께 안내한다.
+    throw new ApiError(
+      "서버에 연결하지 못했습니다. 네트워크 상태 또는 서버의 CORS 허용 설정을 확인해주세요.",
+      0
+    );
+  }
 
   const body: ApiResponse<T> | null = await response
     .json()

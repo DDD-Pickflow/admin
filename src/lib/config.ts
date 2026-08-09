@@ -6,8 +6,14 @@
  * 열리는 상황이 생기지 않게 하기 위한 것이다.
  */
 
-/** 서버 연동 전까지 목 데이터로 동작한다. 실제 API를 붙일 때 false로 바꾼다. */
-export const USE_MOCK_DATA = true;
+/**
+ * 목 데이터로 동작한다(기본값). 실제 API를 붙이려면 환경변수로 끈다.
+ *   NEXT_PUBLIC_USE_MOCK_DATA=false
+ *
+ * 환경별로 나눌 수 있으므로, Preview에서 먼저 실서버로 검증한 뒤 Production을
+ * 전환하는 식으로 쓸 수 있다.
+ */
+export const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA !== "false";
 
 /**
  * 로그인을 건너뛰고 검수 화면을 바로 보여준다 (팀 공유용 데모 배포).
