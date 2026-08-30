@@ -106,3 +106,49 @@ export function saveDevSettings(next: {
 export function clearDevSettings(): void {
   window.localStorage.removeItem(STORAGE_KEY);
 }
+
+// ─── 로그인 전 노출 ──────────────────────────────────────────
+
+const UNLOCK_KEY = "pickflow.admin.devUnlocked";
+
+/**
+ * 로그인하지 않은 화면에서 개발자 설정을 열 수 있는지.
+ *
+ * 로그인 전에도 들어갈 수 있어야 한다 — 개발 서버 로그인을 확인하려면 로그인하기
+ * 전에 서버를 골라야 하는데, 로그인해야만 고를 수 있으면 서로 물린다.
+ * 대신 아무나 보이지는 않게 헤더 로고 연속 클릭으로 연다(안드로이드 개발자 옵션 방식).
+ *
+ * 이미 기본값이 아닌 설정이 들어 있으면 잠겨 있어도 열어준다. 서버를 잘못 골라
+ * 로그인이 막혔을 때 되돌릴 길이 필요하고, 그 브라우저에는 이미 값이 있다.
+ *
+ * 정보를 감추는 장치일 뿐 권한 제어가 아니다. 실제 데이터 접근은 서버가 JWT와
+ * USER_ADMIN 권한으로 막는다.
+ */
+export function isDevSettingsUnlocked(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(UNLOCK_KEY) === "true" || isOverridden();
+}
+
+/**
+ * 로고 연속 클릭으로 연 적이 있는지.
+ * isDevSettingsUnlocked()는 설정이 바뀐 것만으로도 참이 되므로 구분해서 본다 —
+ * 눌러서 연 것이 아니면 다시 잠글 것도 없다.
+ */
+export function isUnlockFlagSet(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(UNLOCK_KEY) === "true";
+}
+
+export function unlockDevSettings(): void {
+  window.localStorage.setItem(UNLOCK_KEY, "true");
+}
+
+export function lockDevSettings(): void {
+  window.localStorage.removeItem(UNLOCK_KEY);
+}
+
+/** 로고를 몇 번 연속으로 눌러야 열리는지 */
+export const UNLOCK_CLICKS = 5;
+
+/** 클릭 사이 간격이 이보다 벌어지면 처음부터 다시 센다 (ms) */
+export const UNLOCK_CLICK_WINDOW = 1500;

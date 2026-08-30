@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
   AppShell,
@@ -14,13 +14,22 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
 import { IconSettings } from "@tabler/icons-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { BRAND_ORANGE, Logo } from "@/components/Logo";
 import { DEMO_MODE } from "@/lib/auth";
-import { DEFAULT_API_BASE_URL, getApiBaseUrl, getApiEnv } from "@/lib/devSettings";
+import {
+  DEFAULT_API_BASE_URL,
+  UNLOCK_CLICKS,
+  UNLOCK_CLICK_WINDOW,
+  getApiBaseUrl,
+  getApiEnv,
+  isDevSettingsUnlocked,
+  unlockDevSettings,
+} from "@/lib/devSettings";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [opened, { toggle }] = useDisclosure();
@@ -34,9 +43,48 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // 기본 서버가 아닐 때만 알린다 — 어느 서버를 보고 있는지 모르는 채로 검수하면 안 된다.
   // localStorage는 서버 렌더링에 없으므로 마운트 뒤에 읽는다.
   const [apiEnvLabel, setApiEnvLabel] = useState<string | null>(null);
+  const [unlocked, setUnlocked] = useState(false);
   useEffect(() => {
     if (getApiBaseUrl() !== DEFAULT_API_BASE_URL) setApiEnvLabel(getApiEnv().label);
+    setUnlocked(isDevSettingsUnlocked());
   }, []);
+
+  /**
+   * 로그인한 검수자에게는 그냥 보이고, 로그인 화면에서는 로고를 연속으로 눌러 연
+   * 브라우저에만 보인다 — 처음 들어온 사람에게 개발 서버 주소를 알려줄 이유가 없다.
+   */
+  const showDevSettings = showNav || unlocked;
+
+  // 연속 클릭 판정용. 렌더에 영향이 없으므로 state로 두지 않는다.
+  const clickCount = useRef(0);
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+  }, []);
+
+  function handleLogoClick() {
+    if (showDevSettings) return;
+
+    clickCount.current += 1;
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+    clickTimer.current = setTimeout(() => {
+      clickCount.current = 0;
+    }, UNLOCK_CLICK_WINDOW);
+
+    if (clickCount.current < UNLOCK_CLICKS) return;
+
+    clickCount.current = 0;
+    unlockDevSettings();
+    setUnlocked(true);
+    notifications.show({
+      color: "gray",
+      message: "개발자 설정을 열었습니다. 헤더의 톱니 아이콘으로 들어갑니다.",
+    });
+  }
+
+  // 설정 화면이 적용 후 돌아올 곳 — 공개 경로라 스스로는 나갈 데를 모른다
+  const settingsHref = `/settings?from=${encodeURIComponent(pathname)}`;
 
   function handleLogout() {
     logout();
@@ -59,7 +107,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {showNav && (
               <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
             )}
-            <Group gap={8}>
+            {/* 로고 연속 클릭이 개발자 설정을 여는 통로다 (안드로이드 개발자 옵션 방식) */}
+            <Group gap={8} onClick={handleLogoClick} style={{ userSelect: "none" }}>
               <Box c={BRAND_ORANGE}>
                 <Logo size={22} />
               </Box>
@@ -93,18 +142,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 )}
               </>
             )}
-            {/* 로그인 전에도 서버를 바꿀 수 있어야 해서 항상 띄운다 */}
-            <Tooltip label="개발자 설정">
-              <ActionIcon
-                component={Link}
-                href="/settings"
-                variant="subtle"
-                color="gray"
-                aria-label="개발자 설정"
-              >
-                <IconSettings size={18} />
-              </ActionIcon>
-            </Tooltip>
+            {showDevSettings && (
+              <Tooltip label="개발자 설정">
+                <ActionIcon
+                  component={Link}
+                  href={settingsHref}
+                  variant="subtle"
+                  color="gray"
+                  aria-label="개발자 설정"
+                >
+                  <IconSettings size={18} />
+                </ActionIcon>
+              </Tooltip>
+            )}
           </Group>
         </Group>
       </AppShell.Header>
@@ -119,7 +169,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           />
           <NavLink
             component={Link}
-            href="/settings"
+            href={settingsHref}
             label="개발자 설정"
             active={pathname === "/settings"}
           />

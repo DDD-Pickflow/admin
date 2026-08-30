@@ -16,14 +16,19 @@ import {
   Text,
   Title,
 } from "@mantine/core";
+import { useRouter } from "next/navigation";
 import { IconAlertTriangle, IconServer } from "@tabler/icons-react";
+import { useAuth } from "@/components/AuthProvider";
 import { DEMO_MODE, USE_MOCK_DATA } from "@/lib/config";
 import {
   API_ENVS,
   DEFAULT_API_BASE_URL,
   clearDevSettings,
   getApiBaseUrl,
+  isDevSettingsUnlocked,
   isMockData,
+  isUnlockFlagSet,
+  lockDevSettings,
   saveDevSettings,
 } from "@/lib/devSettings";
 import { clearSession } from "@/lib/auth";
@@ -32,25 +37,42 @@ import { clearSession } from "@/lib/auth";
  * 개발자 설정.
  *
  * 어느 서버를 보고 있는지 화면에서 바꾸고 확인하기 위한 곳이다. 저장은 localStorage라
- * 이 브라우저에만 남고, 적용할 때는 새로고침한다 — react-query 캐시에 이전 서버의
- * 응답이 남아 있으면 어느 쪽 데이터인지 알 수 없게 되기 때문이다.
+ * 이 브라우저에만 남는다.
  *
- * 로그인 없이 열 수 있다(AuthGuard의 공개 경로). 서버를 잘못 바꿔 로그인이 안 되는
- * 상태가 되면 여기로 다시 들어와서 되돌릴 수 있어야 한다.
+ * 로그인 없이 열 수 있다(AuthGuard의 공개 경로). 개발 서버 로그인을 확인하려면
+ * 로그인하기 전에 서버를 골라야 하기 때문이다. 대신 로그인하지 않은 상태에서는
+ * 헤더 로고를 연속으로 눌러 연 브라우저만 들어올 수 있다.
+ *
+ * 적용하면 들어온 화면(?from)으로 전체 로드로 나간다. 제자리에서 새로고침하면 공개
+ * 경로라 아무도 내보내주지 않아 설정 화면에 갇히고, react-query 캐시에 이전 서버의
+ * 응답이 남아 있으면 어느 쪽 데이터인지 알 수 없게 된다.
  */
 export default function SettingsPage() {
+  const router = useRouter();
+  const { isAuthenticated } = useAuth();
+
   // localStorage는 서버 렌더링에 없다. 마운트 뒤에 읽어야 하이드레이션이 어긋나지 않는다.
   const [ready, setReady] = useState(false);
   const [apiBaseUrl, setApiBaseUrl] = useState(DEFAULT_API_BASE_URL);
   const [useMock, setUseMock] = useState(USE_MOCK_DATA);
+  const [returnTo, setReturnTo] = useState("/");
 
   useEffect(() => {
     setApiBaseUrl(getApiBaseUrl());
     setUseMock(isMockData());
+    // useSearchParams 대신 직접 읽는다 — 이 페이지를 정적 프리렌더로 두기 위해서다
+    setReturnTo(safeReturnPath(new URLSearchParams(window.location.search).get("from")));
     setReady(true);
   }, []);
 
-  if (!ready) {
+  // 주소를 직접 쳐서 들어온 경우 — 열어두지 않은 브라우저는 돌려보낸다
+  useEffect(() => {
+    if (isAuthenticated === false && !isDevSettingsUnlocked()) router.replace("/login");
+  }, [isAuthenticated, router]);
+
+  const blocked = isAuthenticated === false && ready && !isDevSettingsUnlocked();
+
+  if (!ready || blocked) {
     return (
       <Center mih="60vh">
         <Loader />
@@ -67,13 +89,27 @@ export default function SettingsPage() {
     saveDevSettings({ apiBaseUrl, useMockData: useMock });
     // 다른 서버에서 발급된 토큰은 옮겨간 서버에서 통하지 않는다
     if (serverChanged) clearSession();
-    window.location.reload();
+    leave();
   }
 
   function reset() {
     clearDevSettings();
     clearSession();
-    window.location.reload();
+    leave();
+  }
+
+  /** 로고 연속 클릭으로 연 상태를 되돌린다. 설정값 자체는 건드리지 않는다. */
+  function hide() {
+    lockDevSettings();
+    leave();
+  }
+
+  /**
+   * router.push가 아니라 전체 로드로 나간다. 이전 서버의 응답이 남은 쿼리 캐시와
+   * 메모리 상태를 통째로 버려야 어느 쪽 데이터인지 헷갈리지 않는다.
+   */
+  function leave() {
+    window.location.assign(returnTo);
   }
 
   return (
@@ -160,10 +196,30 @@ export default function SettingsPage() {
         <Button variant="subtle" color="gray" onClick={reset} disabled={!overridden}>
           기본값으로 되돌리기
         </Button>
-        <Button onClick={apply} disabled={!changed}>
-          적용하고 새로고침
-        </Button>
+        <Group gap="sm">
+          {isUnlockFlagSet() && (
+            <Button variant="subtle" color="gray" onClick={hide}>
+              로그인 화면에서 숨기기
+            </Button>
+          )}
+          <Button variant="default" onClick={leave}>
+            닫기
+          </Button>
+          <Button onClick={apply} disabled={!changed}>
+            적용
+          </Button>
+        </Group>
       </Group>
     </Stack>
   );
+}
+
+/**
+ * 돌아갈 경로. 주소창에서 오는 값이라 같은 사이트 안의 경로인지 확인한다.
+ * 로그인 상태가 아니면 "/"에서 AuthGuard가 로그인 화면으로 보내준다.
+ */
+function safeReturnPath(from: string | null): string {
+  if (!from || !from.startsWith("/") || from.startsWith("//")) return "/";
+  // 설정 화면으로 되돌아오면 나간 것이 아니다
+  return from.startsWith("/settings") ? "/" : from;
 }
