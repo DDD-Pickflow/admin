@@ -52,7 +52,7 @@ export default function LoginPage() {
           <Stack gap="sm" align="center" mb="xs">
             <LogoTile size={56} />
             <Stack gap={4} align="center">
-              <Title order={4}>스팟 검수 어드민</Title>
+              <Title order={4}>Pickflow Admin</Title>
               <Text size="sm" c="dimmed" ta="center">
                 검수 권한이 있는 계정만 이용할 수 있습니다.
               </Text>

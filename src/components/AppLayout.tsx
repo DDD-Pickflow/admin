@@ -51,7 +51,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <Box c={BRAND_ORANGE}>
                 <Logo size={22} />
               </Box>
-              <Text fw={700}>스팟 검수 어드민</Text>
+              <Text fw={700}>Pickflow Admin</Text>
             </Group>
           </Group>
           {showNav && (

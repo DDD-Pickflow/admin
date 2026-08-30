@@ -10,7 +10,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { AuthGuard } from "@/components/AuthGuard";
 
 export const metadata: Metadata = {
-  title: "스팟 검수 어드민",
+  title: "Pickflow Admin",
   description: "스팟 등록 신청 검수용 관리자 페이지",
 };
 
