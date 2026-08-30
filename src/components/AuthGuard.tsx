@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { Center, Loader } from "@mantine/core";
 import { useAuth } from "@/components/AuthProvider";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback"];
+// /settings 를 열어두는 이유: 서버를 잘못 바꿔 로그인이 막히면 되돌릴 길이 없어진다
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/settings"];
 
 /** 미인증 상태로 검수 화면에 들어오면 로그인으로 돌려보낸다 */
 export function AuthGuard({ children }: { children: React.ReactNode }) {

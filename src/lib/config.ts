@@ -12,6 +12,9 @@
  *
  * 환경별로 나눌 수 있으므로, Preview에서 먼저 실서버로 검증한 뒤 Production을
  * 전환하는 식으로 쓸 수 있다.
+ *
+ * 이건 빌드 기본값이고, /settings 화면에서 브라우저별로 덮어쓸 수 있다.
+ * 실제 동작 여부는 devSettings.isMockData()로 판단할 것.
  */
 export const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA !== "false";
 

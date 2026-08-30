@@ -10,6 +10,7 @@
  */
 
 import { DEMO_MODE } from "@/lib/config";
+import { getApiBaseUrl } from "@/lib/devSettings";
 
 export { DEMO_MODE };
 
@@ -29,9 +30,6 @@ const DEMO_PROFILE: AdminProfile = {
 };
 
 const KAKAO_AUTHORIZE_URL = "https://kauth.kakao.com/oauth/authorize";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://pickflow-api.us/api";
 
 /** 검수 화면에 들어올 수 있는 역할 */
 const ADMIN_ROLE = "USER_ADMIN";
@@ -136,7 +134,7 @@ export async function logout(): Promise<void> {
 
   if (!accessToken || !refreshToken) return;
   try {
-    await fetch(`${API_BASE_URL}/v1/auth/logout`, {
+    await fetch(`${getApiBaseUrl()}/v1/auth/logout`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -232,7 +230,12 @@ export async function completeKakaoLogin(code: string): Promise<void> {
   const response = await fetch("/api/auth/kakao", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, redirectUri: kakaoRedirectUri() }),
+    // 어느 서버로 로그인할지 함께 보낸다. 라우트는 허용 목록에 있는 주소만 받는다.
+    body: JSON.stringify({
+      code,
+      redirectUri: kakaoRedirectUri(),
+      apiBaseUrl: getApiBaseUrl(),
+    }),
   });
 
   const body = await response.json().catch(() => null);
@@ -271,7 +274,7 @@ export function refreshAccessToken(): Promise<boolean> {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
+      const response = await fetch(`${getApiBaseUrl()}/v1/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken }),

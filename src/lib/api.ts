@@ -4,7 +4,7 @@ import {
   notifyUnauthorized,
   refreshAccessToken,
 } from "@/lib/auth";
-import { USE_MOCK_DATA } from "@/lib/config";
+import { getApiBaseUrl, isMockData } from "@/lib/devSettings";
 import {
   RejectReason,
   SpotDetail,
@@ -21,14 +21,13 @@ import {
  *   POST /v1/admin/spots/{spotId}/reviews
  *
  * 모든 응답은 ApiResponse<T> = { success, code, message, data } 로 감싸져 있다.
- * USE_MOCK를 끄면 실제 API로 붙는다. 목 구현은 서버 동작(정렬·검색·필터·페이징)을
+ * 목을 끄면 실제 API로 붙는다. 목 구현은 서버 동작(정렬·검색·필터·페이징)을
  * 그대로 흉내내므로 화면 코드는 손대지 않아도 된다.
+ *
+ * 목 사용 여부와 API 주소는 요청할 때마다 읽는다(devSettings). /settings 화면에서
+ * 개발/운영 서버를 바꿔도 모듈을 다시 불러올 필요가 없게 하기 위한 것이다.
+ * 주소는 iOS 앱이 호출하는 실제 주소 기준 — openapi.json의 servers에는 /api가 빠져 있다.
  */
-
-const USE_MOCK = USE_MOCK_DATA;
-// iOS 앱이 호출하는 실제 주소 기준. openapi.json의 servers에는 /api가 빠져 있다.
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://pickflow-api.us/api";
 
 /**
  * QA용 스위치. 목 데이터만으로는 실패 케이스를 만들 수 없어서 둔다.
@@ -64,7 +63,7 @@ interface ApiResponse<T> {
 export async function fetchSpots(
   params: SpotListParams
 ): Promise<SpotListResponse> {
-  if (USE_MOCK) return mockFetchSpots(params);
+  if (isMockData()) return mockFetchSpots(params);
 
   const query = new URLSearchParams({
     page: String(params.page),
@@ -77,7 +76,7 @@ export async function fetchSpots(
 }
 
 export async function fetchSpot(id: number): Promise<SpotDetail> {
-  if (USE_MOCK) return mockFetchSpot(id);
+  if (isMockData()) return mockFetchSpot(id);
   return request<SpotDetail>(`/v1/admin/spots/${id}`);
 }
 
@@ -85,7 +84,7 @@ export async function reviewSpot(
   id: number,
   body: ReviewRequest
 ): Promise<void> {
-  if (USE_MOCK) return mockReviewSpot(id, body);
+  if (isMockData()) return mockReviewSpot(id, body);
 
   await request<unknown>(`/v1/admin/spots/${id}/reviews`, {
     method: "POST",
@@ -128,7 +127,7 @@ async function request<T>(
 ): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${BASE_URL}${path}`, {
+    response = await fetch(`${getApiBaseUrl()}${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",

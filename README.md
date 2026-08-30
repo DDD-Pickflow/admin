@@ -30,7 +30,25 @@ npm run dev                  # http://localhost:3000
 
 두 스위치는 `src/lib/config.ts`에서 묶여 있다. 목 데이터를 끄면 로그인 건너뛰기도 자동으로 꺼지므로, 실데이터가 인증 없이 열리는 조합은 만들어지지 않는다.
 
-`NEXT_PUBLIC_` 변수는 빌드 시점에 코드에 박힌다. **값을 바꾸면 반드시 재배포**해야 하며, Vercel에서는 빌드 캐시를 끄고 Redeploy 해야 한다.
+`NEXT_PUBLIC_` 변수는 빌드 시점에 코드에 박힌다. **값을 바꾸면 반드시 재배포**해야 하며, Vercel에서는 빌드 캐시를 끄고 Redeploy 해야 한다. 서버 주소와 목 데이터 여부는 재배포 없이 **`/settings`에서 브라우저별로 덮어쓸 수 있다**(아래 참고).
+
+## 개발자 설정 (`/settings`)
+
+개발 서버와 운영 서버를 오가며 확인하려고 둔 화면이다. 헤더 오른쪽 톱니 아이콘으로 들어간다.
+
+| 항목 | 내용 |
+|---|---|
+| API 서버 | 개발 `https://dev-api.pickflow-api.us/api` / 운영 `https://pickflow-api.us/api` 중 선택 |
+| 목 데이터 사용 | 끄면 위에서 고른 서버로 실제 요청을 보낸다 |
+
+- 값은 **localStorage에만** 저장된다. 이 브라우저에서만 유효하고 배포 설정이나 다른 사람의 화면은 바뀌지 않는다.
+- 적용하면 **새로고침**한다. 이전 서버의 응답이 TanStack Query 캐시에 남아 있으면 어느 쪽 데이터인지 알 수 없기 때문이다.
+- 서버를 바꾸면 **세션을 지운다**. 토큰은 서버마다 따로 발급되므로 다시 로그인해야 한다.
+- 로그인 없이 열 수 있다. 서버를 잘못 바꿔 로그인이 막혀도 되돌아올 수 있어야 하기 때문이다.
+- 기본값이 아닌 서버를 보고 있으면 헤더에 주황색 뱃지가 뜬다.
+- 데모 배포(`NEXT_PUBLIC_DEMO_MODE=true`)에서는 목 데이터를 **끌 수 없다**. 로그인을 건너뛰는 상태라 실데이터가 무인증으로 열린다.
+
+로그인 교환은 Next.js 서버 라우트를 거치므로, 브라우저가 고른 주소를 함께 보낸다. 라우트는 위 목록에 있는 주소만 받아들이고 그 외에는 환경변수 기본값을 쓴다.
 
 ## 배포 (Vercel)
 
@@ -68,7 +86,7 @@ git checkout demo && git merge --ff-only main && git push && git checkout main
 
 ## 서버 API 연동
 
-`src/lib/api.ts` 한 곳에 격리되어 있어 `NEXT_PUBLIC_USE_MOCK_DATA=false`로 전환하면 화면 코드는 그대로 실제 API를 쓴다. 규격은 `openapi.json` 기준이다(git 제외, 서버팀 배포).
+`src/lib/api.ts` 한 곳에 격리되어 있어 `NEXT_PUBLIC_USE_MOCK_DATA=false`(또는 `/settings`에서 목 끄기)로 전환하면 화면 코드는 그대로 실제 API를 쓴다. 규격은 `openapi.json` 기준이다(git 제외, 서버팀 배포).
 
 **전환 전 필요한 것**
 
@@ -88,6 +106,7 @@ src/
     page.tsx                   "/"               검수 목록
     spots/[id]/page.tsx        "/spots/:id"      스팟 상세
     login/page.tsx             "/login"          카카오 로그인
+    settings/page.tsx          "/settings"       개발자 설정 (서버 전환)
     auth/callback/page.tsx     "/auth/callback"  카카오 리다이렉트 수신
     api/auth/kakao/route.ts    인가 코드 → 서버 JWT 교환 (서버 전용)
   components/
@@ -99,7 +118,8 @@ src/
     StatusBadge.tsx            상태 뱃지
     Logo.tsx / KakaoIcon.tsx   심볼
   lib/
-    config.ts                  목 데이터·데모 모드 스위치
+    config.ts                  목 데이터·데모 모드 스위치 (빌드 기본값)
+    devSettings.ts             서버 주소·목 여부 런타임 오버라이드
     api.ts                     데이터 접근 계층 (목/실서버 분기)
     auth.ts                    토큰 보관·재발급·로그아웃
     queries.ts                 TanStack Query 훅

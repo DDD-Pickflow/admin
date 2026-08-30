@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { DEFAULT_API_BASE_URL, isAllowedApiBaseUrl } from "@/lib/devSettings";
+
 /**
  * 카카오 인가 코드를 서버 JWT로 바꾼다.
  *
@@ -12,9 +14,6 @@ import { NextResponse } from "next/server";
  */
 
 const KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://pickflow-api.us/api";
 
 /**
  * 카카오 에러를 설정 담당자가 바로 조치할 수 있는 문구로 바꾼다.
@@ -49,13 +48,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const { code, redirectUri } = await request.json();
+  const { code, redirectUri, apiBaseUrl } = await request.json();
   if (!code || !redirectUri) {
     return NextResponse.json(
       { message: "인가 코드가 없습니다." },
       { status: 400 }
     );
   }
+
+  // 개발자 설정에서 고른 서버. 브라우저가 보내는 값이므로 허용 목록에 없으면
+  // 조용히 기본 서버로 돌린다 — 임의 주소로 요청을 돌릴 수 있으면 안 된다.
+  const backendBaseUrl = isAllowedApiBaseUrl(apiBaseUrl)
+    ? apiBaseUrl
+    : DEFAULT_API_BASE_URL;
 
   // 1) 인가 코드 → 카카오 액세스 토큰
   const tokenParams = new URLSearchParams({
@@ -90,7 +95,7 @@ export async function POST(request: Request) {
   }
 
   // 2) 카카오 액세스 토큰 → 서버 JWT (iOS 앱과 동일한 엔드포인트)
-  const loginResponse = await fetch(`${API_BASE_URL}/v1/auth/kakao`, {
+  const loginResponse = await fetch(`${backendBaseUrl}/v1/auth/kakao`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ accessToken: kakaoBody.access_token }),
@@ -102,6 +107,7 @@ export async function POST(request: Request) {
     console.error("[auth/kakao] 백엔드 로그인 실패", {
       status: loginResponse.status,
       body: loginBody,
+      backendBaseUrl,
     });
 
     // 탈퇴 이력이 있는 계정. 복구는 앱에서 진행하는 흐름이라 어드민은 안내만 한다.
