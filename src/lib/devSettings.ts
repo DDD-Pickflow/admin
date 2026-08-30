@@ -1,12 +1,12 @@
 /**
  * 개발자 설정 — 이 브라우저에만 적용되는 런타임 오버라이드.
  *
- * 서버 주소는 원래 빌드 시점 환경변수(NEXT_PUBLIC_API_BASE_URL)로 고정된다.
- * 개발/운영 서버를 오가며 확인하려면 그때마다 재배포하거나 로컬 .env를 고쳐야 하는데,
- * 검수 화면을 확인하는 동안에는 그 왕복이 번거로워서 화면에서 바꿀 수 있게 뒀다.
+ * API 서버는 운영을 기본으로 두고, 개발 서버로 옮기는 일은 /settings 화면에서만 한다.
+ * 환경변수로도 바꿀 수 있게 두면 "지금 어느 서버를 보고 있는지"의 답이 배포 설정과
+ * 화면 설정 두 곳으로 갈라져서, 한 곳만 보고 판단하게 창구를 하나로 뒀다.
  *
  * 값은 localStorage에만 있다 — 다른 사람의 화면이나 배포 설정에는 영향을 주지 않고,
- * 서버 렌더링 중에는 항상 환경변수 기본값이 쓰인다.
+ * 서버 렌더링 중에는 항상 기본값(운영)이 쓰인다.
  */
 
 import { DEMO_MODE, USE_MOCK_DATA } from "@/lib/config";
@@ -22,31 +22,19 @@ export interface ApiEnv {
 const DEV_API_BASE_URL = "https://dev-api.pickflow-api.us/api";
 const PROD_API_BASE_URL = "https://pickflow-api.us/api";
 
-/** 환경변수로 정해진 기본 주소. 오버라이드가 없으면 이 값이 쓰인다 */
-export const DEFAULT_API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? PROD_API_BASE_URL;
+/** 아무것도 고르지 않았을 때 쓰는 주소 */
+export const DEFAULT_API_BASE_URL = PROD_API_BASE_URL;
 
 /**
  * 고를 수 있는 서버 목록.
  *
- * 환경변수가 개발·운영 어느 쪽도 아닌 주소를 가리키면(예: 로컬 백엔드) 그 값도
- * 선택지로 넣어준다. 자유 입력을 받지 않는 이유는 이 목록이 곧 서버 라우트의
- * 허용 목록이기 때문이다 — 로그인 교환 요청을 임의 주소로 돌릴 수 없어야 한다.
+ * 자유 입력을 받지 않는 이유는 이 목록이 곧 서버 라우트의 허용 목록이기 때문이다 —
+ * 로그인 교환 요청을 임의 주소로 돌릴 수 없어야 한다.
  */
-export const API_ENVS: ApiEnv[] = (() => {
-  const envs: ApiEnv[] = [
-    { id: "dev", label: "개발 서버", baseUrl: DEV_API_BASE_URL },
-    { id: "prod", label: "운영 서버", baseUrl: PROD_API_BASE_URL },
-  ];
-  if (!envs.some((env) => env.baseUrl === DEFAULT_API_BASE_URL)) {
-    envs.push({
-      id: "env",
-      label: "환경변수 지정",
-      baseUrl: DEFAULT_API_BASE_URL,
-    });
-  }
-  return envs;
-})();
+export const API_ENVS: ApiEnv[] = [
+  { id: "dev", label: "개발 서버", baseUrl: DEV_API_BASE_URL },
+  { id: "prod", label: "운영 서버", baseUrl: PROD_API_BASE_URL },
+];
 
 /** 서버 라우트가 프록시해도 되는 주소인지 — 목록에 없는 주소는 받지 않는다 */
 export function isAllowedApiBaseUrl(url: unknown): url is string {

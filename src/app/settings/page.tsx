@@ -147,7 +147,7 @@ export default function SettingsPage() {
                         <Text size="sm">{env.label}</Text>
                         {env.baseUrl === DEFAULT_API_BASE_URL && (
                           <Badge size="xs" variant="light" color="gray">
-                            환경변수 기본값
+                            기본값
                           </Badge>
                         )}
                       </Group>

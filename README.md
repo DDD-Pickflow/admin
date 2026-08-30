@@ -22,7 +22,6 @@ npm run dev                  # http://localhost:3000
 
 | 변수 | 설명 |
 |---|---|
-| `NEXT_PUBLIC_API_BASE_URL` | 서버 주소. 기본 `https://pickflow-api.us/api` (**`/api` 포함**) |
 | `NEXT_PUBLIC_KAKAO_REST_API_KEY` | 카카오 REST API 키. 인가 요청·토큰 교환에 쓰인다 |
 | `KAKAO_CLIENT_SECRET` | 카카오 Client Secret. **서버에서만 쓰이므로 `NEXT_PUBLIC_` 금지** |
 | `NEXT_PUBLIC_USE_MOCK_DATA` | `false`면 실제 API에 붙는다. 기본은 목 데이터 |
@@ -30,7 +29,9 @@ npm run dev                  # http://localhost:3000
 
 두 스위치는 `src/lib/config.ts`에서 묶여 있다. 목 데이터를 끄면 로그인 건너뛰기도 자동으로 꺼지므로, 실데이터가 인증 없이 열리는 조합은 만들어지지 않는다.
 
-`NEXT_PUBLIC_` 변수는 빌드 시점에 코드에 박힌다. **값을 바꾸면 반드시 재배포**해야 하며, Vercel에서는 빌드 캐시를 끄고 Redeploy 해야 한다. 서버 주소와 목 데이터 여부는 재배포 없이 **`/settings`에서 브라우저별로 덮어쓸 수 있다**(아래 참고).
+`NEXT_PUBLIC_` 변수는 빌드 시점에 코드에 박힌다. **값을 바꾸면 반드시 재배포**해야 하며, Vercel에서는 빌드 캐시를 끄고 Redeploy 해야 한다.
+
+**API 서버 주소는 환경변수가 아니다.** 기본은 운영이고, 개발 서버로 옮기는 일은 아래 `/settings` 화면에서만 한다 — 지금 어느 서버를 보고 있는지 확인할 곳을 하나로 두기 위해서다.
 
 ## 개발자 설정 (`/settings`)
 
@@ -38,7 +39,7 @@ npm run dev                  # http://localhost:3000
 
 | 항목 | 내용 |
 |---|---|
-| API 서버 | 개발 `https://dev-api.pickflow-api.us/api` / 운영 `https://pickflow-api.us/api` 중 선택 |
+| API 서버 | 개발 `https://dev-api.pickflow-api.us/api` / 운영 `https://pickflow-api.us/api` 중 선택. 기본은 운영 |
 | 목 데이터 사용 | 끄면 위에서 고른 서버로 실제 요청을 보낸다 |
 
 - 값은 **localStorage에만** 저장된다. 이 브라우저에서만 유효하고 배포 설정이나 다른 사람의 화면은 바뀌지 않는다.
