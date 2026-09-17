@@ -20,7 +20,9 @@ export interface ApiEnv {
 }
 
 const DEV_API_BASE_URL = "https://dev-api.pickflow-api.us/api";
-const PROD_API_BASE_URL = "https://pickflow-api.us/api";
+// 심사 제출 빌드부터는 신버전 서버(api.pickflow-api.us)를 본다.
+// 구버전(pickflow-api.us)은 구버전 앱 사용자를 위해 당분간 별도로 유지된다.
+const PROD_API_BASE_URL = "https://api.pickflow-api.us/api";
 
 /** 아무것도 고르지 않았을 때 쓰는 주소 */
 export const DEFAULT_API_BASE_URL = PROD_API_BASE_URL;

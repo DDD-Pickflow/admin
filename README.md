@@ -39,7 +39,7 @@ npm run dev                  # http://localhost:3000
 
 | 항목 | 내용 |
 |---|---|
-| API 서버 | 개발 `https://dev-api.pickflow-api.us/api` / 운영 `https://pickflow-api.us/api` 중 선택. 기본은 운영 |
+| API 서버 | 개발 `https://dev-api.pickflow-api.us/api` / 운영 `https://api.pickflow-api.us/api` 중 선택. 기본은 운영 |
 | 목 데이터 사용 | 끄면 위에서 고른 서버로 실제 요청을 보낸다 |
 
 - 값은 **localStorage에만** 저장된다. 이 브라우저에서만 유효하고 배포 설정이나 다른 사람의 화면은 바뀌지 않는다.
